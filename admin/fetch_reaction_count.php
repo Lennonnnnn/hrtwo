@@ -17,22 +17,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
 
-    // Fetch comments from the database
-    $sql = "SELECT comment, username, created_at FROM employee_comments WHERE employee_id = ? ORDER BY created_at DESC";
+    // Fetch reaction count from the database
+    $sql = "SELECT COUNT(*) AS count FROM employee_reactions WHERE employee_id = ?";
     $stmt = $conn->prepare($sql);
     $stmt->bind_param("i", $employeeId);
     $stmt->execute();
     $result = $stmt->get_result();
-    $comments = [];
+    $row = $result->fetch_assoc();
 
-    while ($row = $result->fetch_assoc()) {
-        $comments[] = $row;
-    }
-
-    if ($comments) {
-        echo json_encode(['status' => 'success', 'comments' => $comments]);
+    if ($row) {
+        echo json_encode(['status' => 'success', 'count' => $row['count']]);
     } else {
-        echo json_encode(['status' => 'error', 'message' => 'No comments found']);
+        echo json_encode(['status' => 'error', 'message' => 'Failed to fetch reaction count']);
     }
 
     $stmt->close();
