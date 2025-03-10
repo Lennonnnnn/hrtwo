@@ -171,9 +171,9 @@ function getTopEmployeesByCriterion($conn, $criterion, $criterionLabel, $index) 
                         </div>
                         <!-- Add buttons for comments and reactions -->
                         <div class='comment-reaction-buttons'>
-                            <button id="comment-button-<?php echo $row['e_id']; ?>" class='btn btn-primary comment-btn' onclick='openCommentModal(<?php echo $row['e_id']; ?>)'>
-                                <i class="bi bi-chat-dots-fill me-1"></i> Comments (<span id="comment-count-<?php echo $row['e_id']; ?>">0</span>)
-                            </button>
+                        <button id="comment-button-<?php echo $row['e_id']; ?>" class='btn btn-primary comment-btn' onclick='openCommentModal(<?php echo $row['e_id']; ?>)'>
+                            <i class="bi bi-chat-dots-fill me-1"></i> Comments (<span id="comment-count-<?php echo $row['e_id']; ?>">0</span>)
+                        </button>
                             <div class='comment-input-container'>
                             <button class="btn btn-primary react-btn" id="react-button-<?php echo $row['e_id']; ?>" onclick='showReactions(this, <?php echo $row['e_id']; ?>)'>
                                 <i class="bi bi-emoji-smile-fill me-1"></i> React (<span id="reaction-count-<?php echo $row['e_id']; ?>">0</span>)
@@ -1268,43 +1268,100 @@ function getComments($conn, $employeeId) {
         menu.classList.toggle('show');
     }
 
-    // Function to save a reaction
-    function selectReaction(reaction, employeeId) {
-        fetch('save_reaction.php', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                employee_id: employeeId,
-                reaction: reaction
-            })
+    
+    // Function to save a reaction and trigger a notification
+// Function to save a reaction and trigger a notification
+function selectReaction(reaction, employeeId) {
+    fetch('save_reaction.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            employee_id: employeeId,
+            reaction: reaction
         })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                alert('Reaction saved: ' + reaction);
-                closeReactions(employeeId);
-                updateReactionCount(employeeId);
-            } else {
-                alert('Failed to save reaction');
-            }
-        })
-        .catch(error => console.error('Error:', error));
-    }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert('Reaction saved: ' + reaction);
+            closeReactions(employeeId);
+            updateReactionCount(employeeId);
 
+            // Send a notification after saving the reaction
+            sendNotification(employeeId, reaction);
+        } else {
+            alert('Failed to save reaction');
+        }
+    })
+    .catch(error => console.error('Error:', error));
+}
+
+// Function to send a notification
+function sendNotification(employeeId, reaction) {
+    fetch('../db/fetchnotif.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            employee_id: employeeId,
+            reaction: reaction
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log('Notification sent successfully');
+            // Add the new notification to the notification dropdown
+            addNotificationToDropdown(data.notification);
+        } else {
+            console.error('Failed to send notification:', data.error);
+        }
+    })
+    .catch(error => console.error('Error:', error));
+}
+
+// Function to add a new notification to the dropdown
+function addNotificationToDropdown(notification) {
+    const notificationList = document.getElementById('notificationList');
+
+    // Create a new notification item
+    const listItem = document.createElement('li');
+    listItem.innerHTML = `
+        <a class="dropdown-item" href="#">
+            <div class="d-flex justify-content-between">
+                <span>${notification.message}</span>
+                <small class="text-muted">${new Date(notification.created_at).toLocaleString()}</small>
+            </div>
+            <div class="d-flex justify-content-end mt-2">
+                <button class="btn btn-sm btn-danger delete-notification" data-id="${notification.notification_id}">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </a>`;
+
+    // Add the new notification at the top of the list
+    notificationList.insertBefore(listItem, notificationList.firstChild);
+
+    // Update the notification count
+    const notificationCount = document.getElementById('notificationCount');
+    const currentCount = parseInt(notificationCount.textContent, 10);
+    notificationCount.textContent = currentCount + 1;
+}
     // Function to open the comment modal with animation
     function openCommentModal(employeeId) {
-        const modal = document.getElementById('commentModal');
-        modal.style.display = 'flex';
-        modal.classList.add('show');
+    const modal = document.getElementById('commentModal');
+    modal.style.display = 'flex';
+    modal.classList.add('show');
 
-        // Add employee ID to the modal for reference
-        modal.setAttribute('data-employee-id', employeeId);
+    // Add employee ID to the modal for reference
+    modal.setAttribute('data-employee-id', employeeId);
 
-        // Fetch and display existing comments
-        fetchComments(employeeId);
-    }
+    // Fetch and display existing comments and update the comment count
+    fetchComments(employeeId);
+}
 
     // Function to close the comment modal
     function closeModal(modalId) {
@@ -1360,6 +1417,12 @@ function getComments($conn, $employeeId) {
 
                 commentList.appendChild(commentElement);
             });
+
+            // Update the comment count
+            const commentCountElement = document.getElementById(`comment-count-${employeeId}`);
+            if (commentCountElement) {
+                commentCountElement.textContent = data.total_comments;
+            }
         } else {
             // Show empty state
             const emptyState = document.createElement('div');
@@ -1369,6 +1432,12 @@ function getComments($conn, $employeeId) {
                 <p>No comments yet. Be the first to comment!</p>
             `;
             commentList.appendChild(emptyState);
+
+            // Update the comment count to 0
+            const commentCountElement = document.getElementById(`comment-count-${employeeId}`);
+            if (commentCountElement) {
+                commentCountElement.textContent = 0;
+            }
         }
     })
     .catch(error => console.error('Error:', error));
@@ -1376,34 +1445,32 @@ function getComments($conn, $employeeId) {
 
     // Function to calculate time ago
     function getTimeAgo(date) {
-        const now = new Date();
-        const seconds = Math.floor((now - date) / 1000);
-
+        const seconds = Math.floor((new Date() - date) / 1000);
+        
         let interval = Math.floor(seconds / 31536000);
         if (interval > 1) return interval + ' years ago';
         if (interval === 1) return '1 year ago';
-
+        
         interval = Math.floor(seconds / 2592000);
         if (interval > 1) return interval + ' months ago';
         if (interval === 1) return '1 month ago';
-
+        
         interval = Math.floor(seconds / 86400);
         if (interval > 1) return interval + ' days ago';
         if (interval === 1) return '1 day ago';
-
+        
         interval = Math.floor(seconds / 3600);
         if (interval > 1) return interval + ' hours ago';
         if (interval === 1) return '1 hour ago';
-
+        
         interval = Math.floor(seconds / 60);
         if (interval > 1) return interval + ' minutes ago';
         if (interval === 1) return '1 minute ago';
-
+        
         if (seconds < 10) return 'just now';
-
+        
         return Math.floor(seconds) + ' seconds ago';
     }
-
     // Function to post a comment
     function postComment(event, input) {
     if ((event.key === 'Enter' || event.type === 'click') && input.value.trim() !== '') {
@@ -1451,6 +1518,9 @@ function getComments($conn, $employeeId) {
                 commentList.insertBefore(commentElement, commentList.firstChild);
 
                 input.value = ''; // Clear the input field
+
+                // Refresh the comment count
+                fetchComments(employeeId);
             } else {
                 alert('Failed to save comment');
             }
